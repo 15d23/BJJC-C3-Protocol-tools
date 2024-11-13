@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>V3协议解析助手</title>
+    <style>
+        /* 基础样式 */
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        /* 输入区域 */
+        textarea {
+            width: 100%;
+            height: 100px;
+            margin: 10px 0;
+            font-family: monospace;
+            resize: vertical;
+        }
+
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+
+        /* 输出区域 */
+        #output {
+            white-space: pre-wrap;
+            font-family: monospace;
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin-top: 20px;
+        }
+
+        /* 通用样式 */
+        .hex-byte, .label {
+            display: inline-block;
+            padding: 2px 4px;
+            margin: 0;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+
+        .label {
+            margin-bottom: 5px;
+        }
+
+        /* 颜色定义 */
+        :root {
+            --color-protocol: #ffcdd2;
+            --color-version: #e1bee7;
+            --color-fixed: #f5f5f5;
+            --color-frame: #c5cae9;
+            --color-points: #bbdefb;
+            --color-timestamp: #b2dfdb;
+            --color-point-data: #c8e6c9;
+            --color-x-coord: #E6E6FA;
+            --color-y-coord: #FFE4B5;
+        }
+
+        /* 各部分颜色样式 */
+        .protocol-header, .protocol-header-label { background-color: var(--color-protocol); }
+        .version, .version-label { background-color: var(--color-version); }
+        .fixed-byte, .fixed-byte-label { 
+            background-color: var(--color-fixed);
+            border: 1px solid rgba(0,0,0,0.1);
+        }
+        .frame-count, .frame-count-label { background-color: var(--color-frame); }
+        .points-count, .points-count-label { background-color: var(--color-points); }
+        .timestamp, .timestamp-label { background-color: var(--color-timestamp); }
+        .point-data, .point-data-label { background-color: var(--color-point-data); }
+
+        /* 坐标点样式 */
+        .point-number { 
+            background-color: var(--color-point-data);
+            margin-right: 4px;
+        }
+
+        .x-coord { 
+            background-color: var(--color-x-coord);
+            margin-right: 4px;
+        }
+
+        .y-coord { 
+            background-color: var(--color-y-coord);
+        }
+
+        /* 数据包装器 */
+        .data-wrapper {
+            display: inline-block;
+            background-color: var(--color-point-data);
+            padding: 2px 4px;
+            border-radius: 3px;
+        }
+
+        /* 分隔线 */
+        .data-separator {
+            border-bottom: 2px dashed #ccc;
+            margin: 20px 0;
+        }
+
+        /* 数据组颜色 */
+        .data-group {
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .data-group-0 { background-color: #f0f8ff; }
+        .data-group-1 { background-color: #fff0f5; }
+        .data-group-2 { background-color: #f0fff0; }
+        .data-group-3 { background-color: #fff8dc; }
+        .data-group-4 { background-color: #f5f5f5; }
+
+        /* 格式化输入显示 */
+        #formatted-input {
+            white-space: pre-wrap;
+            font-family: monospace;
+            margin: 10px 0;
+            padding: 10px;
+            border: 1px solid #ccc;
+        }
+
+        .formatted-group {
+            padding: 5px;
+            margin: 5px 0;
+            border-radius: 3px;
+        }
+
+        /* 错误提示 */
+        .error-text {
+            color: #f44336;
+            font-weight: bold;
+        }
+
+        .error-label {
+            color: #000;
+            font-weight: bold;
+        }
+
+        .point-error {
+            color: #f44336;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <h1>V3协议解析助手</h1>
+    <textarea id="input" placeholder="请输入16进制字符串&#13;&#10;&#13;&#10;示例：&#13;&#10;AA020100010500000193232E6CEA01003A01A302002B004A03FFF3003C04FFC7008005FFD00012AA020100010500000193232E6CEA01003A01A302002B004A03FFF3003C04FFC7008005FFD00012"></textarea>
+    <br>
+    <button onclick="parseAndDisplay()">解析</button>
+    <span id="groupCount"></span>
+    <div id="formatted-input"></div>
+    <div id="output"></div>
+
+    <script>
+    function parseV3Protocol(hexString) {
+        let result = {
+            version: '',
+            frameCount: 0,
+            pointsPerFrame: 0,
+            frames: [],
+            originalHex: {
+                header: hexString.substr(0, 2),
+                version: hexString.substr(2, 2),
+                fixedByte: hexString.substr(4, 2),
+                frameCount: hexString.substr(6, 4),
+                pointsCount: hexString.substr(10, 2),
+                data: hexString.substr(12)
+            },
+            error: null
+        };
+        
+        // 检查协议头
+        if (!hexString.toUpperCase().startsWith('AA')) {
+            return '无效的协议头';
+        }
+        
+        // 解析版本
+        const version = hexString.substr(2, 2);
+        if (version !== '02') {
+            return '不支持的协议版本';
+        }
+        result.version = '普通量程版';
+        
+        // 检查固定字节
+        if (hexString.substr(4, 2) !== '01') {
+            return '无效的固定字节';
+        }
+        
+        // 解析帧数
+        result.frameCount = parseInt(hexString.substr(6, 4), 16);
+        
+        // 解析每帧点数
+        result.pointsPerFrame = parseInt(hexString.substr(10, 2), 16);
+        
+        // 开始位置：12 (跳过头部6字节)
+        let currentPos = 12;
+        
+        // 解析每一帧
+        for (let frameIndex = 0; frameIndex < result.frameCount; frameIndex++) {
+            let frame = {
+                timestamp: '',
+                points: []
+            };
+            
+            // 解析时间戳 (转换为北京时间)
+            const timestampHex = hexString.substr(currentPos, 16);
+            const timestampMs = parseInt(timestampHex, 16);
+            const date = new Date(timestampMs);
+            date.setHours(date.getHours() + 8);
+            frame.timestamp = date.toISOString().replace('T', ' ').replace('Z', '').slice(0, 23);
+            currentPos += 16;
+
+            let expectedPointNumber = 1;
+            let actualPoints = 0;
+            
+            // 解析每个点
+            for (let pointIndex = 0; pointIndex < result.pointsPerFrame; pointIndex++) {
+                if (currentPos + 10 > hexString.length) {
+                    if (!result.error) {
+                        result.error = `实际点数少于声明点数`;
+                    }
+                    break;
+                }
+                
+                // 点编号
+                const pointNumber = parseInt(hexString.substr(currentPos, 2), 16);
+                actualPoints++;
+                
+                // 检查点序号是否连续
+                const isDiscontinuous = pointNumber !== expectedPointNumber;
+                if (isDiscontinuous) {
+                    if (!result.error) {
+                        result.error = `点序号不连续: 期望0x${expectedPointNumber.toString(16)}(${expectedPointNumber})，实际0x${pointNumber.toString(16)}(${pointNumber})`;
+                    }
+                }
+                expectedPointNumber++;
+                
+                currentPos += 2;
+                
+                // X坐标 (4字节)
+                let x = parseInt(hexString.substr(currentPos, 4), 16);
+                let xValue;
+                if (x === 0x7FFF) {
+                    xValue = "无法测量";
+                } else if (x > 0x7FFF) {
+                    x = -(0x10000 - x);
+                    xValue = (x / 100).toFixed(2);
+                } else {
+                    xValue = (x / 100).toFixed(2);
+                }
+                currentPos += 4;
+                
+                // Y坐标 (4字节)
+                let y = parseInt(hexString.substr(currentPos, 4), 16);
+                let yValue;
+                if (y === 0x7FFF) {
+                    yValue = "无法测量";
+                } else if (y > 0x7FFF) {
+                    y = -(0x10000 - y);
+                    yValue = (y / 100).toFixed(2);
+                } else {
+                    yValue = (y / 100).toFixed(2);
+                }
+                currentPos += 4;
+                
+                frame.points.push({
+                    pointNumber: pointNumber,
+                    x: xValue,
+                    y: yValue,
+                    originalX: hexString.substr(currentPos - 8, 4),
+                    originalY: hexString.substr(currentPos - 4, 4),
+                    isDiscontinuous: isDiscontinuous
+                });
+            }
+            
+            if (actualPoints !== result.pointsPerFrame && !result.error) {
+                result.error = `点数不匹配: 期望0x${result.pointsPerFrame.toString(16)}(${result.pointsPerFrame})，实际0x${actualPoints.toString(16)}(${actualPoints})`;
+            }
+            
+            result.frames.push(frame);
+        }
+        
+        return result;
+    }
+
+    // 格式化输出结果
+    function formatV3Result(result, groupIndex) {
+        if (typeof result === 'string') {
+            return result; // 错误信息直接返回
+        }
+        
+        let output = '原始数据解析：\n';
+        if (result.error) {
+            output += `<span class="error-label">错误</span>：<span class="error-text">${result.error}</span>\n\n`;
+        }
+        
+        output += `<div class="data-group data-group-${groupIndex % 5}">\n`;
+        output += '<span class="label protocol-header-label">协议头</span> ';
+        output += '<span class="label version-label">版本</span> ';
+        output += '<span class="label fixed-byte-label">固定字节</span> ';
+        output += '<span class="label frame-count-label">帧数</span> ';
+        output += '<span class="label points-count-label">点数</span> ';
+        output += '<span class="label point-data-label">数据部分</span>\n';
+        
+        output += `<span class="hex-byte protocol-header">${result.originalHex.header}</span> `;
+        output += `<span class="hex-byte version">${result.originalHex.version}</span> `;
+        output += `<span class="hex-byte fixed-byte">${result.originalHex.fixedByte}</span> `;
+        output += `<span class="hex-byte frame-count">${result.originalHex.frameCount}</span> `;
+        output += `<span class="hex-byte points-count">${result.originalHex.pointsCount}</span> `;
+        
+        // 数据部分，包括时间戳和坐标数据
+        let dataOutput = '';
+        let pos = 0;
+        for(let frame of result.frames) {
+            // 提取时间戳部分
+            const timestamp = result.originalHex.data.substr(pos, 16);
+            dataOutput += `<span class="timestamp">${timestamp}</span> `;
+            pos += 16;
+            
+            // 提取该帧的点数据
+            for(let point of frame.points) {
+                const pointData = result.originalHex.data.substr(pos, 10);
+                const pointNum = pointData.substr(0, 2);
+                const xCoord = pointData.substr(2, 4);
+                const yCoord = pointData.substr(6, 4);
+                dataOutput += `<span class="point-number">${pointNum}</span>`;
+                dataOutput += `<span class="x-coord">${xCoord}</span>`;
+                dataOutput += `<span class="y-coord">${yCoord}</span> `;
+                pos += 10;
+            }
+        }
+        output += `<span class="data-wrapper">${dataOutput}</span>\n\n`;
+        
+        output += `协议版本: ${result.version}\n`;
+        output += `帧数: ${result.frameCount}\n`;
+        output += `每帧点数: ${result.pointsPerFrame}\n\n`;
+        
+        result.frames.forEach((frame, frameIndex) => {
+            output += `第${frameIndex + 1}帧:\n`;
+            output += `时间戳: ${frame.timestamp}\n`;
+            output += '<table style="border-collapse: collapse; margin-left: 20px;">\n';
+            frame.points.forEach(point => {
+                output += '<tr style="line-height: 1.5;">';
+                const pointInfo = `点${point.pointNumber}	(0x${point.pointNumber.toString(16).padStart(2,'0')})`;
+                output += `<td style="padding-right: 15px;"><${point.isDiscontinuous ? 'span class="point-error"' : 'span'}>${pointInfo}</span></td>`;
+                output += `<td style="padding-right: 15px;">(${point.x}${typeof point.x === 'string' ? '' : 'mm'}, ${point.y}${typeof point.y === 'string' ? '' : 'mm'})</td>`;
+                output += `<td>原始值: <span class="data-wrapper"><span class="x-coord">${point.originalX}</span> <span class="y-coord">${point.originalY}</span></span></td>`;
+                output += '</tr>\n';
+            });
+            output += '</table>\n\n';
+        });
+        output += '</div>';
+        return output;
+    }
+
+    function parseAndDisplay() {
+        let input = document.getElementById('input').value.trim();
+        
+        if (!input) {
+            // 如果没有输入，自动填充示例数据
+            const exampleData = 'AA020100010500000193232E6CEA01003A01A302002B004A03FFF3003C04FFC7008005FFD00012AA020100010500000193232E6CEA01003A01A302002B004A03FFF3003C04FFC7008005FFD00012';
+            document.getElementById('input').value = exampleData;
+            input = exampleData;
+        }
+
+        const cleanInput = input.replace(/\s/g, '');
+        if (!/^[0-9A-Fa-f]+$/.test(cleanInput)) {
+            alert('存在无效的16进制字符串！');
+            return;
+        }
+
+        // 格式化输入显示
+        let formattedInput = '';
+        let dataIndex = 0;
+        let pos = 0;
+
+        while (pos < cleanInput.length) {
+            if (cleanInput.substr(pos, 2).toUpperCase() === 'AA' && 
+                cleanInput.substr(pos + 2, 2) === '02' && 
+                cleanInput.substr(pos + 4, 2) === '01') {
+                
+                const frameCount = parseInt(cleanInput.substr(pos + 6, 4), 16);
+                const pointsCount = parseInt(cleanInput.substr(pos + 10, 2), 16);
+                const dataLength = 12 + (frameCount * (16 + pointsCount * 10)); // 更新数据长度计算
+                
+                formattedInput += `<div class="formatted-group data-group-${dataIndex % 5}">`;
+                formattedInput += cleanInput.substr(pos, dataLength).match(/.{2}/g).join(' ').toUpperCase();
+                formattedInput += '</div>';
+                
+                pos += dataLength;
+                dataIndex++;
+            } else {
+                pos++;
+            }
+        }
+        document.getElementById('formatted-input').innerHTML = formattedInput;
+
+        let finalOutput = '';
+        dataIndex = 1;
+        pos = 0;
+
+        while (pos < cleanInput.length) {
+            if (cleanInput.substr(pos, 2).toUpperCase() === 'AA' && 
+                cleanInput.substr(pos + 2, 2) === '02' && 
+                cleanInput.substr(pos + 4, 2) === '01') {
+                
+                const frameCount = parseInt(cleanInput.substr(pos + 6, 4), 16);
+                const pointsCount = parseInt(cleanInput.substr(pos + 10, 2), 16);
+                const dataLength = 12 + (frameCount * (16 + pointsCount * 10)); // 更新数据长度计算
+                
+                const singleData = cleanInput.substr(pos, dataLength);
+                const result = parseV3Protocol(singleData);
+                const formattedResult = formatV3Result(result, dataIndex - 1);
+                
+                finalOutput += `数据 #${dataIndex}:\n${formattedResult}`;
+                if (pos + dataLength < cleanInput.length) {
+                    finalOutput += '<div class="data-separator"></div>';
+                }
+                
+                pos += dataLength;
+                dataIndex++;
+            } else {
+                pos++;
+            }
+        }
+        
+        document.getElementById('output').innerHTML = finalOutput;
+        document.getElementById('groupCount').innerHTML = `共解析出 ${dataIndex - 1} 组数据`;
+    }
+    </script>
+</body>
+</html>
