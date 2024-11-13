@@ -95,6 +95,7 @@
             background-color: var(--color-point-data);
             padding: 2px 4px;
             border-radius: 3px;
+            vertical-align: top;
         }
 
         /* 分隔线 */
@@ -105,10 +106,17 @@
 
         /* 数据组颜色 */
         .data-group {
-            padding: 10px;
+            padding: 0 10px 0px 10px;
             border-radius: 5px;
             margin: 10px 0;
         }
+
+        .data-group .raw-data-section {
+            overflow-x: auto;
+            white-space: nowrap;
+            padding-bottom: 10px;
+        }
+
         .data-group-0 { background-color: #f0f8ff; }
         .data-group-1 { background-color: #fff0f5; }
         .data-group-2 { background-color: #f0fff0; }
@@ -122,12 +130,18 @@
             margin: 10px 0;
             padding: 10px;
             border: 1px solid #ccc;
+            overflow-x: auto;
         }
 
         .formatted-group {
             padding: 5px;
             margin: 5px 0;
             border-radius: 3px;
+            white-space: nowrap;
+            display: block;
+            width: max-content;
+            min-width: 100%;
+            box-sizing: border-box;
         }
 
         /* 错误提示 */
@@ -144,6 +158,12 @@
         .point-error {
             color: #f44336;
             font-weight: bold;
+        }
+
+        /* 帧数据换行 */
+        .frame-data {
+            display: block;
+            margin: 5px 0;
         }
     </style>
 </head>
@@ -184,7 +204,7 @@
         if (version !== '02') {
             return '不支持的协议版本';
         }
-        result.version = '普通量程版';
+        result.version = '02普通量程版';
         
         // 检查固定字节
         if (hexString.substr(4, 2) !== '01') {
@@ -300,6 +320,7 @@
         }
         
         output += `<div class="data-group data-group-${groupIndex % 5}">\n`;
+        output += '<div class="raw-data-section">';
         output += '<span class="label protocol-header-label">协议头</span> ';
         output += '<span class="label version-label">版本</span> ';
         output += '<span class="label fixed-byte-label">固定字节</span> ';
@@ -307,18 +328,22 @@
         output += '<span class="label points-count-label">点数</span> ';
         output += '<span class="label point-data-label">数据部分</span>\n';
         
+        output += '<br>';
         output += `<span class="hex-byte protocol-header">${result.originalHex.header}</span> `;
         output += `<span class="hex-byte version">${result.originalHex.version}</span> `;
         output += `<span class="hex-byte fixed-byte">${result.originalHex.fixedByte}</span> `;
         output += `<span class="hex-byte frame-count">${result.originalHex.frameCount}</span> `;
         output += `<span class="hex-byte points-count">${result.originalHex.pointsCount}</span> `;
-        
         // 数据部分，包括时间戳和坐标数据
         let dataOutput = '';
         let pos = 0;
-        for(let frame of result.frames) {
+        for(let frameIndex = 0; frameIndex < result.frames.length; frameIndex++) {
+            const frame = result.frames[frameIndex];
             // 提取时间戳部分
             const timestamp = result.originalHex.data.substr(pos, 16);
+            if(frameIndex > 0) {
+                dataOutput += '<div class="frame-data">';
+            }
             dataOutput += `<span class="timestamp">${timestamp}</span> `;
             pos += 16;
             
@@ -333,8 +358,11 @@
                 dataOutput += `<span class="y-coord">${yCoord}</span> `;
                 pos += 10;
             }
+            if(frameIndex > 0) {
+                dataOutput += '</div>';
+            }
         }
-        output += `<span class="data-wrapper">${dataOutput}</span>\n\n`;
+        output += `<span class="data-wrapper">${dataOutput}</span>\n</div>\n\n`;
         
         output += `协议版本: ${result.version}\n`;
         output += `帧数: ${result.frameCount}\n`;
@@ -346,9 +374,9 @@
             output += '<table style="border-collapse: collapse; margin-left: 20px;">\n';
             frame.points.forEach(point => {
                 output += '<tr style="line-height: 1.5;">';
-                const pointInfo = `点${point.pointNumber}	(0x${point.pointNumber.toString(16).padStart(2,'0')})`;
-                output += `<td style="padding-right: 15px;"><${point.isDiscontinuous ? 'span class="point-error"' : 'span'}>${pointInfo}</span></td>`;
-                output += `<td style="padding-right: 15px;">(${point.x}${typeof point.x === 'string' ? '' : 'mm'}, ${point.y}${typeof point.y === 'string' ? '' : 'mm'})</td>`;
+                const pointInfo = `点${point.pointNumber} (0x${point.pointNumber.toString(16).padStart(2,'0')})：`;
+                output += `<td style="padding-right: 5px;"><${point.isDiscontinuous ? 'span class="point-error"' : 'span'}>${pointInfo}</span></td>`;
+                output += `<td style="padding-right: 15px;">(${point.x > 0 ? ' ' : ''}${point.x}${typeof point.x === 'string' ? '' : 'mm'} ,${point.y > 0 ? ' ' : ''}${point.y}${typeof point.y === 'string' ? '' : 'mm'})</td>`;
                 output += `<td>原始值: <span class="data-wrapper"><span class="x-coord">${point.originalX}</span> <span class="y-coord">${point.originalY}</span></span></td>`;
                 output += '</tr>\n';
             });
